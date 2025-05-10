@@ -1,58 +1,3 @@
-// import React, { createContext, useState, useContext, useEffect } from 'react';
-// import axios from '../config/axios';
-
-// // Create the UserContext
-// export const UserContext = createContext();
-
-// // Create a provider component
-// export const UserProvider = ({ children }) => {
-//     const [user, setUser] = useState(null);
-//     const [loading, setLoading] = useState(true);
-
-//     // Clear user data
-//     const clearUser = () => {
-//         setUser(null);
-//     };
-
-//     // Initialize user state by checking session
-//     useEffect(() => {
-//         // Verify user session with the server
-//         const verifyUser = async () => {
-//             try {
-//                 const response = await axios.get('/users/profile');
-//                 if (response.data.user) {
-//                     setUser(response.data.user);
-//                 } else {
-//                     clearUser();
-//                 }
-//             } catch (error) {
-//                 console.error('Error verifying user:', error);
-//                 clearUser();
-//             } finally {
-//                 setLoading(false);
-//             }
-//         };
-
-//         verifyUser();
-//     }, []);
-
-//     return (
-//         <UserContext.Provider value={{ user, setUser, clearUser, loading }}>
-//             {children}
-//         </UserContext.Provider>
-//     );
-// };
-
-// // Custom hook to use the user context
-// export const useUser = () => {
-//     const context = useContext(UserContext);
-//     if (!context) {
-//         throw new Error('useUser must be used within a UserProvider');
-//     }
-//     return context;
-// };
-
-
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import axios from '../config/axios';
 
@@ -80,6 +25,8 @@ export const UserProvider = ({ children }) => {
                     timeout: 10000, // 10 second timeout
                     withCredentials: true // Ensure cookies are sent for authentication
                 });
+                console.log("rrrrr",response.data);
+                
                 
                 if (response.data && response.data.user) {
                     setUser(response.data.user);
@@ -88,7 +35,7 @@ export const UserProvider = ({ children }) => {
                 }
             } catch (error) {
                 // Improved error handling with specific messages
-                console.error('Error verifying user:', error);
+                console.error('Error verifying user:---', error);
                 
                 if (error.response) {
                     // The request was made and the server responded with a status code
