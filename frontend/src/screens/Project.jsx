@@ -5,7 +5,7 @@ import axios from '../config/axios'
 import { initializeSocket, receiveMessage, sendMessage } from '../config/socket'
 import Markdown from 'markdown-to-jsx'
 import hljs from 'highlight.js'
-import { getWebContainer } from '../config/webcontainer'
+import { getWebContainer } from '../config/webContainer'
 import { motion, AnimatePresence } from 'framer-motion'
 
 function SyntaxHighlightedCode(props) {
@@ -56,6 +56,9 @@ const Project = () => {
     const [loadedMessageCount, setLoadedMessageCount] = useState(0)
     const [messageError, setMessageError] = useState(null)
     const [isSearchMode, setIsSearchMode] = useState(false)
+
+    // New state for WebContainer-related UI
+    const [webContainerError, setWebContainerError] = useState(null)
 
     const handleUserClick = (id) => {
         setSelectedUserId(prevSelectedUserId => {
@@ -191,10 +194,19 @@ const Project = () => {
         
         window.addEventListener('socket_error', handleSocketError);
 
-        if (!webContainer) {
+        // Only attempt to load WebContainer in browser environment
+        if (typeof window !== 'undefined') {
             getWebContainer().then(container => {
-                setWebContainer(container);
-                console.log("container started");
+                if (container) {
+                    setWebContainer(container);
+                    console.log("container started");
+                } else {
+                    console.warn("WebContainer initialization failed or not supported in this environment");
+                    setWebContainerError("WebContainer failed to initialize. Some features may not be available.");
+                }
+            }).catch(err => {
+                console.error("Error initializing WebContainer:", err);
+                setWebContainerError("Error initializing WebContainer: " + (err.message || "Unknown error"));
             });
         }
 
@@ -348,6 +360,11 @@ const Project = () => {
     }
     
     const runProject = async () => {
+        if (!webContainer) {
+            setWebContainerError("WebContainer is not available. This may be due to your browser environment or deployment restrictions.");
+            return;
+        }
+        
         try {
             setIsLoading(true);
             await webContainer.mount(fileTree);
@@ -735,15 +752,22 @@ const Project = () => {
                         </div>
 
                         <div className="actions flex gap-2 p-2 pr-4">
-                                <motion.button
-                                    whileHover={{ scale: 1.05 }}
-                                    whileTap={{ scale: 0.95 }}
+                            {webContainerError && (
+                                <div className="text-xs text-red-500 flex items-center mr-2">
+                                    <i className="ri-error-warning-line mr-1"></i>
+                                    {webContainerError}
+                                </div>
+                            )}
+                            <motion.button
+                                whileHover={{ scale: 1.05 }}
+                                whileTap={{ scale: 0.95 }}
                                 onClick={runProject}
-                                disabled={isLoading || Object.keys(fileTree).length === 0}
+                                disabled={isLoading || Object.keys(fileTree).length === 0 || !webContainer}
                                 className={`py-1 px-4 rounded-md flex items-center gap-2 transition-all shadow-sm
-                                         ${isLoading || Object.keys(fileTree).length === 0 ? 
+                                         ${isLoading || Object.keys(fileTree).length === 0 || !webContainer ? 
                                          'bg-slate-300 text-slate-500 cursor-not-allowed' : 
                                          'bg-green-500 hover:bg-green-600 text-white'}`}
+                                title={!webContainer ? "WebContainer is not available in this environment" : ""}
                             >
                                 {isLoading ? (
                                     <>

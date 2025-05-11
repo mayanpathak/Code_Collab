@@ -37,285 +37,6 @@ const handleFatalError = (error) => {
 };
 
 // Attempt to connect to MongoDB
-// const startServer = async () => {
-//     try {
-//         // Connect to MongoDB
-//         await connect();
-//         console.log('✅ MongoDB connected successfully');
-
-//         // Test Redis connection
-//         await redisClient.raw.ping();
-//         console.log('✅ Redis connected successfully');
-
-//         // Configure Socket.IO middleware
-//         io.use(async (socket, next) => {
-//             try {
-//                 // Get token from socket handshake cookies (set by the browser automatically)
-//                 const cookies = socket.handshake.headers.cookie;
-//                 let token = null;
-                
-//                 if (cookies) {
-//                     console.log("Socket handshake has cookies");
-//                     const cookieArray = cookies.split(';');
-//                     for (const cookie of cookieArray) {
-//                         const [name, value] = cookie.trim().split('=');
-//                         if (name === 'token') {
-//                             // URL decode the cookie value as it might be encoded
-//                             token = decodeURIComponent(value);
-//                             console.log("Found token in cookies");
-//                             break;
-//                         }
-//                     }
-//                 }
-                
-//                 // Fallback to authorization header if needed
-//                 if (!token) {
-//                     console.log("No token in cookies, checking auth header");
-//                     token = socket.handshake.auth?.token || socket.handshake.headers.authorization?.split(' ')?.[1];
-//                 }
-                
-//                 const projectId = socket.handshake.query.projectId;
-
-//                 if (!mongoose.Types.ObjectId.isValid(projectId)) {
-//                     return next(new Error('Invalid projectId'));
-//                 }
-
-//                 socket.project = await projectModel.findById(projectId);
-//                 socket.projectId = projectId;
-
-//                 if (!socket.project) {
-//                     console.warn(`Project with ID ${projectId} not found`);
-//                 }
-
-//                 if (!token) {
-//                     console.error("Authentication failed: No token found in cookies or headers");
-//                     return next(new Error('Authentication error: No token provided'));
-//                 }
-
-//                 try {
-//                     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-//                     console.log("Token verified successfully");
-//                     socket.user = decoded;
-//                     next();
-//                 } catch (jwtError) {
-//                     console.error("JWT verification failed:", jwtError.message);
-//                     return next(new Error(`Authentication error: ${jwtError.message}`));
-//                 }
-//             } catch (error) {
-//                 console.error('Socket connection error:', error);
-//                 next(error);
-//             }
-//         });
-
-//         // Configure Socket.IO connection handling
-//         io.on('connection', async socket => {
-//             try {
-//                 socket.roomId = socket.projectId;
-//                 console.log(`User connected to room ${socket.roomId}`);
-
-//                 socket.join(socket.roomId);
-
-//                 // Handle loading cached messages
-//                 try {
-//                     const messageCount = await getMessageCount(socket.roomId);
-//                     const cachedMessages = await getMessages(socket.roomId, {
-//                         limit: 100,  // Load last 100 messages initially
-//                         offset: 0
-//                     });
-                    
-//                     if (cachedMessages.length > 0) {
-//                         socket.emit('load-messages', {
-//                             messages: cachedMessages,
-//                             totalCount: messageCount
-//                         });
-//                     }
-//                 } catch (error) {
-//                     console.error('Error loading cached messages:', error);
-//                     socket.emit('error', {
-//                         type: 'LOAD_MESSAGES_ERROR',
-//                         message: 'Failed to load message history'
-//                     });
-//                 }
-
-//                 // Handle loading more messages
-//                 socket.on('load-more-messages', async ({ offset, limit }) => {
-//                     try {
-//                         const olderMessages = await getMessages(socket.roomId, { offset, limit });
-//                         socket.emit('more-messages-loaded', olderMessages);
-//                     } catch (error) {
-//                         console.error('Error loading more messages:', error);
-//                         socket.emit('error', {
-//                             type: 'LOAD_MORE_MESSAGES_ERROR',
-//                             message: 'Failed to load more messages'
-//                         });
-//                     }
-//                 });
-
-//                 // Handle message search
-//                 socket.on('search-messages', async ({ searchTerm }) => {
-//                     try {
-//                         const matchingMessages = await searchMessages(socket.roomId, searchTerm);
-//                         socket.emit('search-results', matchingMessages);
-//                     } catch (error) {
-//                         console.error('Error searching messages:', error);
-//                         socket.emit('error', {
-//                             type: 'SEARCH_MESSAGES_ERROR',
-//                             message: 'Failed to search messages'
-//                         });
-//                     }
-//                 });
-
-//                 // Handle project messages
-//                 socket.on('project-message', async data => {
-//                     try {
-//                         const message = data.message;
-
-//                         // Add timestamp to the message
-//                         const messageWithTimestamp = {
-//                             ...data,
-//                             timestamp: new Date().toISOString()
-//                         };
-
-//                         // Store message in Redis
-//                         await storeMessage(socket.roomId, messageWithTimestamp);
-
-//                         // Forward the user message to everyone in the room
-//                         socket.broadcast.to(socket.roomId).emit('project-message', messageWithTimestamp);
-
-//                         // Check if this is an AI request
-//                         const aiIsPresentInMessage = message.includes('@ai');
-//                         if (aiIsPresentInMessage) {
-//                             // Notify users that AI is processing
-//                             const processingMessage = {
-//                                 message: JSON.stringify({ 
-//                                     text: "I'm thinking about your request... This may take a moment."
-//                                 }),
-//                                 sender: {
-//                                     _id: 'ai',
-//                                     email: 'AI Assistant'
-//                                 },
-//                                 timestamp: new Date().toISOString()
-//                             };
-
-//                             // Store AI processing message in Redis
-//                             await storeMessage(socket.roomId, processingMessage);
-//                             io.to(socket.roomId).emit('project-message', processingMessage);
-
-//                             try {
-//                                 // Extract the prompt and validate
-//                                 const prompt = message.replace('@ai', '').trim();
-//                                 if (!prompt) {
-//                                     throw new Error("Empty prompt");
-//                                 }
-
-//                                 // Add a specific max timeout for AI generation (45 seconds)
-//                                 let aiResponseReceived = false;
-//                                 const aiResponsePromise = new Promise(async (resolve, reject) => {
-//                                     const timeoutId = setTimeout(() => {
-//                                         if (!aiResponseReceived) {
-//                                             reject(new Error("AI request timed out after 45 seconds"));
-//                                         }
-//                                     }, 45000);
-
-//                                     try {
-//                                         const result = await generateResult(prompt);
-//                                         aiResponseReceived = true;
-//                                         clearTimeout(timeoutId);
-//                                         resolve(result);
-//                                     } catch (error) {
-//                                         clearTimeout(timeoutId);
-//                                         reject(error);
-//                                     }
-//                                 });
-
-//                                 const result = await aiResponsePromise;
-//                                 const parsedResult = JSON.parse(result);
-
-//                                 // Ensure the result has the necessary structure
-//                                 if (!parsedResult.text) {
-//                                     parsedResult.text = `I've processed your request for "${prompt}" but couldn't generate detailed text.`;
-//                                 }
-
-//                                 const sanitizedResult = JSON.stringify(parsedResult);
-//                                 const aiResponse = {
-//                                     message: sanitizedResult,
-//                                     sender: {
-//                                         _id: 'ai',
-//                                         email: 'AI Assistant'
-//                                     },
-//                                     timestamp: new Date().toISOString()
-//                                 };
-
-//                                 // Store AI response in Redis
-//                                 await storeMessage(socket.roomId, aiResponse);
-//                                 io.to(socket.roomId).emit('project-message', aiResponse);
-
-//                                 // Update project file tree if needed
-//                                 if (parsedResult.fileTree && Object.keys(parsedResult.fileTree).length > 0 && socket.project) {
-//                                     try {
-//                                         await projectModel.findByIdAndUpdate(
-//                                             socket.projectId,
-//                                             { $set: { fileTree: parsedResult.fileTree } },
-//                                             { new: true }
-//                                         );
-//                                         console.log("Updated project with new file tree");
-//                                     } catch (dbError) {
-//                                         console.error("Error saving file tree to project:", dbError);
-//                                         socket.emit('error', {
-//                                             type: 'UPDATE_FILE_TREE_ERROR',
-//                                             message: 'Failed to update project file tree'
-//                                         });
-//                                     }
-//                                 }
-//                             } catch (error) {
-//                                 console.error("AI processing error:", error);
-//                                 const errorMessage = {
-//                                     message: JSON.stringify({
-//                                         text: `Error: ${error.message}. Please try again with a more specific prompt.`
-//                                     }),
-//                                     sender: {
-//                                         _id: 'ai',
-//                                         email: 'AI Assistant'
-//                                     },
-//                                     timestamp: new Date().toISOString()
-//                                 };
-
-//                                 await storeMessage(socket.roomId, errorMessage);
-//                                 io.to(socket.roomId).emit('project-message', errorMessage);
-//                             }
-//                         }
-//                     } catch (error) {
-//                         console.error('Socket message handling error:', error);
-//                         socket.emit('error', {
-//                             type: 'MESSAGE_HANDLING_ERROR',
-//                             message: 'Failed to process message'
-//                         });
-//                     }
-//                 });
-
-//                 socket.on('disconnect', () => {
-//                     console.log('User disconnected');
-//                     socket.leave(socket.roomId);
-//                 });
-//             } catch (error) {
-//                 console.error('Socket connection error:', error);
-//                 socket.emit('error', {
-//                     type: 'CONNECTION_ERROR',
-//                     message: 'Failed to establish connection'
-//                 });
-//             }
-//         });
-
-//         // Start server
-//         server.listen(port, () => {
-//             console.log(`✅ Server is running on http://localhost:${port}`);
-//         });
-//     } catch (error) {
-//         handleFatalError(error);
-//     }
-// };
-
-// Improved startServer function with better structure and error handling
 const startServer = async () => {
     try {
         // Connect to MongoDB
@@ -326,23 +47,20 @@ const startServer = async () => {
         await redisClient.raw.ping();
         console.log('✅ Redis connected successfully');
 
-        // Configure Socket.IO middleware for authentication
+        // Configure Socket.IO middleware
         io.use(async (socket, next) => {
-            console.log('New socket connection attempt...');
-            
             try {
+                // Get token from socket handshake cookies (set by the browser automatically)
+                const cookies = socket.handshake.headers.cookie;
                 let token = null;
-                const projectId = socket.handshake.query.projectId;
                 
-                // Check token from multiple sources in a more structured way
-                
-                // 1. First try cookies (set by the browser automatically)
-                if (socket.handshake.headers.cookie) {
-                    console.log("Checking cookies for token");
-                    const cookieArray = socket.handshake.headers.cookie.split(';');
+                if (cookies) {
+                    console.log("Socket handshake has cookies");
+                    const cookieArray = cookies.split(';');
                     for (const cookie of cookieArray) {
                         const [name, value] = cookie.trim().split('=');
                         if (name === 'token') {
+                            // URL decode the cookie value as it might be encoded
                             token = decodeURIComponent(value);
                             console.log("Found token in cookies");
                             break;
@@ -350,74 +68,52 @@ const startServer = async () => {
                     }
                 }
                 
-                // 2. Try the auth object (socket.auth from client)
-                if (!token && socket.handshake.auth && socket.handshake.auth.token) {
-                    console.log('Token found in socket auth object');
-                    token = socket.handshake.auth.token;
+                // Fallback to authorization header if needed
+                if (!token) {
+                    console.log("No token in cookies, checking auth header");
+                    token = socket.handshake.auth?.token || socket.handshake.headers.authorization?.split(' ')?.[1];
                 }
                 
-                // 3. Finally check Authorization header
-                if (!token && socket.handshake.headers.authorization) {
-                    console.log('Token found in Authorization header');
-                    token = socket.handshake.headers.authorization.split(' ')?.[1];
+                const projectId = socket.handshake.query.projectId;
+
+                if (!mongoose.Types.ObjectId.isValid(projectId)) {
+                    return next(new Error('Invalid projectId'));
                 }
 
-                // Validate project ID before database query
-                if (!projectId || !mongoose.Types.ObjectId.isValid(projectId)) {
-                    console.log('Invalid or missing projectId:', projectId);
-                    return next(new Error('Invalid or missing projectId'));
+                socket.project = await projectModel.findById(projectId);
+                socket.projectId = projectId;
+
+                if (!socket.project) {
+                    console.warn(`Project with ID ${projectId} not found`);
                 }
 
-                // If no token found, reject the connection
                 if (!token) {
-                    console.error("Authentication failed: No token found in cookies, auth object, or headers");
+                    console.error("Authentication failed: No token found in cookies or headers");
                     return next(new Error('Authentication error: No token provided'));
                 }
 
-                // Verify JWT token
                 try {
                     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-                    console.log(`Socket authenticated for user: ${decoded.email || decoded.id}`);
+                    console.log("Token verified successfully");
                     socket.user = decoded;
-                    
-                    // Load project data after successful authentication
-                    socket.project = await projectModel.findById(projectId);
-                    socket.projectId = projectId;
-                    socket.roomId = projectId; // Set room ID for consistency
-                    
-                    if (!socket.project) {
-                        console.warn(`Project with ID ${projectId} not found`);
-                        // You could decide whether to fail the connection here or allow it
-                        // return next(new Error('Project not found'));
-                    } else {
-                        console.log(`Socket associated with project: ${projectId}`);
-                    }
-                    
                     next();
                 } catch (jwtError) {
-                    if (jwtError.name === 'TokenExpiredError') {
-                        console.log('Token expired for socket connection');
-                        return next(new Error('Authentication failed: Token expired'));
-                    }
                     console.error("JWT verification failed:", jwtError.message);
                     return next(new Error(`Authentication error: ${jwtError.message}`));
                 }
             } catch (error) {
-                console.error('Socket authentication error:', error);
-                next(new Error('Internal server error during authentication'));
+                console.error('Socket connection error:', error);
+                next(error);
             }
         });
 
         // Configure Socket.IO connection handling
         io.on('connection', async socket => {
-            console.log(`Socket connected: ${socket.id}`);
-            
             try {
-                // Join room based on project ID for scoped events
-                if (socket.roomId) {
-                    socket.join(socket.roomId);
-                    console.log(`User connected to room ${socket.roomId}`);
-                }
+                socket.roomId = socket.projectId;
+                console.log(`User connected to room ${socket.roomId}`);
+
+                socket.join(socket.roomId);
 
                 // Handle loading cached messages
                 try {
@@ -444,11 +140,6 @@ const startServer = async () => {
                 // Handle loading more messages
                 socket.on('load-more-messages', async ({ offset, limit }) => {
                     try {
-                        // Validate parameters
-                        if (typeof offset !== 'number' || typeof limit !== 'number') {
-                            throw new Error('Invalid offset or limit parameters');
-                        }
-                        
                         const olderMessages = await getMessages(socket.roomId, { offset, limit });
                         socket.emit('more-messages-loaded', olderMessages);
                     } catch (error) {
@@ -463,11 +154,6 @@ const startServer = async () => {
                 // Handle message search
                 socket.on('search-messages', async ({ searchTerm }) => {
                     try {
-                        // Validate search term
-                        if (!searchTerm || typeof searchTerm !== 'string') {
-                            throw new Error('Invalid search term');
-                        }
-                        
                         const matchingMessages = await searchMessages(socket.roomId, searchTerm);
                         socket.emit('search-results', matchingMessages);
                     } catch (error) {
@@ -482,14 +168,9 @@ const startServer = async () => {
                 // Handle project messages
                 socket.on('project-message', async data => {
                     try {
-                        // Validate data
-                        if (!data || !data.message || typeof data.message !== 'string') {
-                            throw new Error('Invalid message format');
-                        }
-
                         const message = data.message;
 
-                        // Add timestamp and ensure proper message structure
+                        // Add timestamp to the message
                         const messageWithTimestamp = {
                             ...data,
                             timestamp: new Date().toISOString()
@@ -498,13 +179,110 @@ const startServer = async () => {
                         // Store message in Redis
                         await storeMessage(socket.roomId, messageWithTimestamp);
 
-                        // Forward the user message to everyone in the room except sender
-                        socket.to(socket.roomId).emit('project-message', messageWithTimestamp);
+                        // Forward the user message to everyone in the room
+                        socket.broadcast.to(socket.roomId).emit('project-message', messageWithTimestamp);
 
                         // Check if this is an AI request
                         const aiIsPresentInMessage = message.includes('@ai');
                         if (aiIsPresentInMessage) {
-                            handleAIRequest(socket, message);
+                            // Notify users that AI is processing
+                            const processingMessage = {
+                                message: JSON.stringify({ 
+                                    text: "I'm thinking about your request... This may take a moment."
+                                }),
+                                sender: {
+                                    _id: 'ai',
+                                    email: 'AI Assistant'
+                                },
+                                timestamp: new Date().toISOString()
+                            };
+
+                            // Store AI processing message in Redis
+                            await storeMessage(socket.roomId, processingMessage);
+                            io.to(socket.roomId).emit('project-message', processingMessage);
+
+                            try {
+                                // Extract the prompt and validate
+                                const prompt = message.replace('@ai', '').trim();
+                                if (!prompt) {
+                                    throw new Error("Empty prompt");
+                                }
+
+                                // Add a specific max timeout for AI generation (45 seconds)
+                                let aiResponseReceived = false;
+                                const aiResponsePromise = new Promise(async (resolve, reject) => {
+                                    const timeoutId = setTimeout(() => {
+                                        if (!aiResponseReceived) {
+                                            reject(new Error("AI request timed out after 45 seconds"));
+                                        }
+                                    }, 45000);
+
+                                    try {
+                                        const result = await generateResult(prompt);
+                                        aiResponseReceived = true;
+                                        clearTimeout(timeoutId);
+                                        resolve(result);
+                                    } catch (error) {
+                                        clearTimeout(timeoutId);
+                                        reject(error);
+                                    }
+                                });
+
+                                const result = await aiResponsePromise;
+                                const parsedResult = JSON.parse(result);
+
+                                // Ensure the result has the necessary structure
+                                if (!parsedResult.text) {
+                                    parsedResult.text = `I've processed your request for "${prompt}" but couldn't generate detailed text.`;
+                                }
+
+                                const sanitizedResult = JSON.stringify(parsedResult);
+                                const aiResponse = {
+                                    message: sanitizedResult,
+                                    sender: {
+                                        _id: 'ai',
+                                        email: 'AI Assistant'
+                                    },
+                                    timestamp: new Date().toISOString()
+                                };
+
+                                // Store AI response in Redis
+                                await storeMessage(socket.roomId, aiResponse);
+                                io.to(socket.roomId).emit('project-message', aiResponse);
+
+                                // Update project file tree if needed
+                                if (parsedResult.fileTree && Object.keys(parsedResult.fileTree).length > 0 && socket.project) {
+                                    try {
+                                        await projectModel.findByIdAndUpdate(
+                                            socket.projectId,
+                                            { $set: { fileTree: parsedResult.fileTree } },
+                                            { new: true }
+                                        );
+                                        console.log("Updated project with new file tree");
+                                    } catch (dbError) {
+                                        console.error("Error saving file tree to project:", dbError);
+                                        socket.emit('error', {
+                                            type: 'UPDATE_FILE_TREE_ERROR',
+                                            message: 'Failed to update project file tree'
+                                        });
+                                    }
+                                }
+                            } catch (error) {
+                                console.error("AI processing error:", error);
+                                const errorMessage = {
+                                    message: JSON.stringify({
+                                        text: `Error: ${error.message}. Please try again with a more specific prompt.`
+                                    }),
+                                    sender: {
+                                        _id: 'ai',
+                                        email: 'AI Assistant'
+                                    },
+                                    timestamp: new Date().toISOString()
+                                };
+
+                                await storeMessage(socket.roomId, errorMessage);
+                                io.to(socket.roomId).emit('project-message', errorMessage);
+                            }
                         }
                     } catch (error) {
                         console.error('Socket message handling error:', error);
@@ -515,11 +293,9 @@ const startServer = async () => {
                     }
                 });
 
-                socket.on('disconnect', (reason) => {
-                    console.log(`Socket ${socket.id} disconnected: ${reason}`);
-                    if (socket.roomId) {
-                        socket.leave(socket.roomId);
-                    }
+                socket.on('disconnect', () => {
+                    console.log('User disconnected');
+                    socket.leave(socket.roomId);
                 });
             } catch (error) {
                 console.error('Socket connection error:', error);
@@ -530,105 +306,12 @@ const startServer = async () => {
             }
         });
 
-        // Start server with proper port configuration
-        const PORT = process.env.PORT || 5000;
-        server.listen(PORT, () => {
-            console.log(`✅ Server is running on http://localhost:${PORT}`);
+        // Start server
+        server.listen(port, () => {
+            console.log(`✅ Server is running on http://localhost:${port}`);
         });
     } catch (error) {
         handleFatalError(error);
-    }
-};
-
-// Helper function to handle AI requests
-const handleAIRequest = async (socket, message) => {
-    try {
-        // Notify users that AI is processing
-        const processingMessage = {
-            message: JSON.stringify({ 
-                text: "I'm thinking about your request... This may take a moment."
-            }),
-            sender: {
-                _id: 'ai',
-                email: 'AI Assistant'
-            },
-            timestamp: new Date().toISOString()
-        };
-
-        // Store AI processing message in Redis
-        await storeMessage(socket.roomId, processingMessage);
-        io.to(socket.roomId).emit('project-message', processingMessage);
-
-        // Extract the prompt and validate
-        const prompt = message.replace('@ai', '').trim();
-        if (!prompt) {
-            throw new Error("Empty prompt");
-        }
-
-        // Add a specific max timeout for AI generation (45 seconds)
-        const aiResponsePromise = Promise.race([
-            generateResult(prompt),
-            new Promise((_, reject) => 
-                setTimeout(() => reject(new Error("AI request timed out after 45 seconds")), 45000)
-            )
-        ]);
-
-        const result = await aiResponsePromise;
-        const parsedResult = JSON.parse(result);
-
-        // Ensure the result has the necessary structure
-        if (!parsedResult.text) {
-            parsedResult.text = `I've processed your request for "${prompt}" but couldn't generate detailed text.`;
-        }
-
-        const sanitizedResult = JSON.stringify(parsedResult);
-        const aiResponse = {
-            message: sanitizedResult,
-            sender: {
-                _id: 'ai',
-                email: 'AI Assistant'
-            },
-            timestamp: new Date().toISOString()
-        };
-
-        // Store AI response in Redis
-        await storeMessage(socket.roomId, aiResponse);
-        io.to(socket.roomId).emit('project-message', aiResponse);
-
-        // Update project file tree if needed
-        if (parsedResult.fileTree && 
-            Object.keys(parsedResult.fileTree).length > 0 && 
-            socket.project) {
-            try {
-                await projectModel.findByIdAndUpdate(
-                    socket.projectId,
-                    { $set: { fileTree: parsedResult.fileTree } },
-                    { new: true }
-                );
-                console.log("Updated project with new file tree");
-            } catch (dbError) {
-                console.error("Error saving file tree to project:", dbError);
-                socket.emit('error', {
-                    type: 'UPDATE_FILE_TREE_ERROR',
-                    message: 'Failed to update project file tree'
-                });
-            }
-        }
-    } catch (error) {
-        console.error("AI processing error:", error);
-        const errorMessage = {
-            message: JSON.stringify({
-                text: `Error: ${error.message}. Please try again with a more specific prompt.`
-            }),
-            sender: {
-                _id: 'ai',
-                email: 'AI Assistant'
-            },
-            timestamp: new Date().toISOString()
-        };
-
-        await storeMessage(socket.roomId, errorMessage);
-        io.to(socket.roomId).emit('project-message', errorMessage);
     }
 };
 
