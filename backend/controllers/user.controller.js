@@ -21,7 +21,7 @@ export const createUserController = async (req, res) => {
         // Set cookie for added security
         res.cookie('token', token, {
             httpOnly: true,
-            maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+            maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
             sameSite: 'none',
             secure: true,
             path: '/'
@@ -67,7 +67,7 @@ export const loginController = async (req, res) => {
         // Set cookie for added security
         res.cookie('token', token, {
             httpOnly: true,
-            maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+            maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
             sameSite: 'lax',
             path: '/',
             secure: true

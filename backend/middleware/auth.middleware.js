@@ -63,6 +63,43 @@ export const authUser = async (req, res, next) => {
             decoded = jwt.verify(token, process.env.JWT_SECRET);
         } catch (tokenError) {
             if (tokenError.name === 'TokenExpiredError') {
+                // Token expired - try to refresh it if we can identify the user
+                try {
+                    // Extract data without verification to find the user
+                    const expiredDecoded = jwt.decode(token);
+                    if (expiredDecoded && expiredDecoded.email) {
+                        // Find user by email
+                        const user = await User.findOne({ email: expiredDecoded.email }).select('-password');
+                        
+                        if (user) {
+                            // User found - generate new token
+                            const newToken = await user.generateJWT();
+                            
+                            // Set the new token in cookie
+                            res.cookie('token', newToken, {
+                                httpOnly: true,
+                                maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+                                sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+                                secure: true,
+                                path: '/'
+                            });
+                            
+                            // Set user in the request and continue
+                            req.user = user;
+                            console.log('[Auth] Successfully refreshed expired token');
+                            
+                            // Set refreshed token header so client can update
+                            res.set('X-Refreshed-Token', newToken);
+                            
+                            // Continue to the route handler
+                            return next();
+                        }
+                    }
+                } catch (refreshError) {
+                    console.error('[Auth] Token refresh failed:', refreshError);
+                }
+                
+                // If we reach here, refresh failed
                 return res.status(401).json({
                     status: 'error',
                     message: 'Your session has expired. Please log in again.',

@@ -98,6 +98,27 @@ const startServer = async () => {
                     socket.user = decoded;
                     next();
                 } catch (jwtError) {
+                    // Special handling for expired tokens
+                    if (jwtError.name === 'TokenExpiredError') {
+                        console.log("Token expired, attempting to find user and regenerate token");
+                        try {
+                            // Extract email from the expired token (without verification)
+                            const decodedExpired = jwt.decode(token);
+                            if (decodedExpired && decodedExpired.email) {
+                                // Find the user by email
+                                const user = await mongoose.model('user').findOne({ email: decodedExpired.email });
+                                if (user) {
+                                    // User exists, generate a new token
+                                    socket.user = { email: user.email };
+                                    console.log("Successfully regenerated user session for socket connection");
+                                    return next();
+                                }
+                            }
+                        } catch (recoveryError) {
+                            console.error("Failed to recover from expired token:", recoveryError);
+                        }
+                    }
+                    
                     console.error("JWT verification failed:", jwtError.message);
                     return next(new Error(`Authentication error: ${jwtError.message}`));
                 }

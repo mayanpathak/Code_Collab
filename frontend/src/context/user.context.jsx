@@ -15,6 +15,53 @@ export const UserProvider = ({ children }) => {
         setUser(null);
     };
 
+    // Check for and handle token refresh
+    const handleTokenRefresh = (response) => {
+        const refreshedToken = response.headers['x-refreshed-token'];
+        if (refreshedToken) {
+            console.log('Token was refreshed automatically by the server');
+            
+            // Store the refreshed token in localStorage for non-cookie fallback
+            localStorage.setItem('token', refreshedToken);
+            
+            // Configure axios to use the refreshed token for future requests
+            axios.defaults.headers.common['Authorization'] = `Bearer ${refreshedToken}`;
+        }
+    };
+
+    // Setup axios interceptor to check for token refresh header on every response
+    useEffect(() => {
+        const responseInterceptor = axios.interceptors.response.use(
+            (response) => {
+                // Check if a token was refreshed
+                handleTokenRefresh(response);
+                return response;
+            },
+            (error) => {
+                // Handle errors but still check for token refresh
+                if (error.response) {
+                    handleTokenRefresh(error.response);
+                    
+                    // Handle 401 errors globally
+                    if (error.response.status === 401) {
+                        // If the token has expired and wasn't refreshed, clear user
+                        const refreshFailed = error.response.data?.code === 'TOKEN_EXPIRED';
+                        if (refreshFailed) {
+                            console.log('Token expired and refresh failed, logging out');
+                            clearUser();
+                        }
+                    }
+                }
+                return Promise.reject(error);
+            }
+        );
+        
+        // Cleanup
+        return () => {
+            axios.interceptors.response.eject(responseInterceptor);
+        };
+    }, []);
+
     // Initialize user state by checking session
     useEffect(() => {
         // Verify user session with the server
@@ -25,8 +72,9 @@ export const UserProvider = ({ children }) => {
                     timeout: 10000, // 10 second timeout
                     withCredentials: true // Ensure cookies are sent for authentication
                 });
-                console.log("rrrrr",response.data);
                 
+                // Handle token refresh if provided
+                handleTokenRefresh(response);
                 
                 if (response.data && response.data.user) {
                     setUser(response.data.user);
