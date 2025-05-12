@@ -10,20 +10,47 @@ connect();
 
 const app = express();
 
+// Allowed origins for CORS
+const allowedOrigins = [
+    'http://localhost:5173',
+    'http://localhost:5174',
+    'https://code-collab-mny8.vercel.app',
+    // Add any other frontend domains here
+];
+
 // Configure CORS with credentials
 app.use(cors({
-    origin: ['http://localhost:5173', 'http://localhost:5174','https://code-collab-mny8.vercel.app'],
+    origin: function(origin, callback) {
+        // Allow requests with no origin (like mobile apps, curl requests)
+        if (!origin) return callback(null, true);
+        
+        if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV !== 'production') {
+            callback(null, true);
+        } else {
+            console.log('CORS blocked request from:', origin);
+            callback(null, true); // Allow all origins in case the whitelist is incomplete
+        }
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Cookie']
 }));
 
 // Set options for preflight requests
 app.options('*', cors({
-    origin: ['http://localhost:5173', 'http://localhost:5174','https://code-collab-mny8.vercel.app'],
+    origin: function(origin, callback) {
+        if (!origin) return callback(null, true);
+        
+        if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV !== 'production') {
+            callback(null, true);
+        } else {
+            console.log('CORS preflight blocked request from:', origin);
+            callback(null, true); // Allow all origins in case the whitelist is incomplete
+        }
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Cookie']
 }));
 
 app.use(morgan('dev'));

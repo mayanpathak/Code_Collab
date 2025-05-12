@@ -18,13 +18,16 @@ export const initializeSocket = (projectId) => {
 
         console.log(`Initializing socket connection to ${API_URL} for project ${projectId}`);
 
-        // Get auth token from localStorage as fallback if available
+        // Get auth token from localStorage
         const authToken = localStorage.getItem('authToken');
+        
+        // Debug logging
+        console.log('Socket connection with token?', !!authToken);
         
         // Create socket connection with improved auth options
         socket = io(API_URL, {
             withCredentials: true, // Enable sending cookies
-            auth: authToken ? { token: authToken } : undefined, // Send token in auth object as fallback
+            auth: { token: authToken }, // Always send token in auth object
             query: {
                 projectId: projectId
             },
@@ -32,6 +35,8 @@ export const initializeSocket = (projectId) => {
             reconnectionAttempts: 10,
             reconnectionDelay: 2000,
             timeout: 20000,
+            forceNew: true, // Force a new connection
+            transports: ['websocket', 'polling'], // Try WebSocket first, then fallback to polling
             extraHeaders: authToken ? {
                 'Authorization': `Bearer ${authToken}`
             } : {}
@@ -62,6 +67,15 @@ export const initializeSocket = (projectId) => {
                 // Attempt to refresh authentication if this looks like an auth error
                 // This will trigger the UserContext to attempt re-auth via axios interceptor
                 window.dispatchEvent(new CustomEvent('auth_refresh_needed'));
+                
+                // Try to reconnect using token from localStorage in case cookie is not working
+                const latestToken = localStorage.getItem('authToken');
+                if (latestToken) {
+                    socket.auth = { token: latestToken };
+                    socket.io.opts.extraHeaders = {
+                        'Authorization': `Bearer ${latestToken}`
+                    };
+                }
                 
                 // Schedule a reconnection attempt
                 if (!reconnectTimer) {
@@ -96,6 +110,14 @@ export const initializeSocket = (projectId) => {
                 if (!reconnectTimer) {
                     reconnectTimer = setTimeout(() => {
                         console.log('Attempting to reconnect after disconnect...');
+                        // Try to reconnect using token from localStorage
+                        const latestToken = localStorage.getItem('authToken');
+                        if (latestToken) {
+                            socket.auth = { token: latestToken };
+                            socket.io.opts.extraHeaders = {
+                                'Authorization': `Bearer ${latestToken}`
+                            };
+                        }
                         socket.connect();
                         reconnectTimer = null;
                     }, 3000);
@@ -145,6 +167,16 @@ export const sendMessage = (event, data) => {
 
         if (!socket.connected) {
             console.warn('Socket not connected when trying to send message. Reconnecting...');
+            
+            // Try to refresh auth token before reconnecting
+            const latestToken = localStorage.getItem('authToken');
+            if (latestToken) {
+                socket.auth = { token: latestToken };
+                socket.io.opts.extraHeaders = {
+                    'Authorization': `Bearer ${latestToken}`
+                };
+            }
+            
             socket.connect();
             
             // Queue message to be sent after reconnection
@@ -210,6 +242,11 @@ export const refreshSocketAuth = (newToken) => {
             
             // Update socket auth
             socket.auth = { token: newToken };
+            if (socket.io && socket.io.opts) {
+                socket.io.opts.extraHeaders = {
+                    'Authorization': `Bearer ${newToken}`
+                };
+            }
             
             // If socket is already connected, disconnect and reconnect with new auth
             if (socket.connected) {

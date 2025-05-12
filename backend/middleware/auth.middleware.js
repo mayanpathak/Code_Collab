@@ -27,8 +27,11 @@ const extractToken = (req) => {
     }
     
     // Log what we received for debugging
-    console.log('[Auth Debug] Headers:', JSON.stringify(req.headers));
+    console.log('[Auth Debug] Headers:', Object.keys(req.headers));
     console.log('[Auth Debug] Cookies exist:', !!req.cookies);
+    if (req.cookies) {
+        console.log('[Auth Debug] Cookie keys:', Object.keys(req.cookies));
+    }
     
     return null;
 };
@@ -50,6 +53,7 @@ export const authUser = async (req, res, next) => {
         // Log token existence (not the actual token) for debugging
         console.log('[Auth Debug] Token found:', !!token);
         console.log('[Auth Debug] Environment:', process.env.NODE_ENV);
+        console.log('[Auth Debug] Request URL:', req.originalUrl);
         
         if (!token) {
             return res.status(401).json({
@@ -79,14 +83,14 @@ export const authUser = async (req, res, next) => {
                             res.cookie('token', newToken, {
                                 httpOnly: true,
                                 maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-                                sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+                                sameSite: 'none', // Changed from conditional to always use 'none' for cross-site
                                 secure: true,
                                 path: '/'
                             });
                             
                             // Set user in the request and continue
                             req.user = user;
-                            console.log('[Auth] Successfully refreshed expired token');
+                            console.log('[Auth] Successfully refreshed expired token for user:', user.email);
                             
                             // Set refreshed token header so client can update
                             res.set('X-Refreshed-Token', newToken);
@@ -135,6 +139,7 @@ export const authUser = async (req, res, next) => {
         }
         
         req.user = user;
+        console.log('[Auth] User authenticated successfully:', user.email);
         
         // Check if this is a project-related route and load project data
         const projectIdParam = req.params.projectId;

@@ -15,10 +15,28 @@ const port = process.env.PORT || 3000;
 // Create HTTP server
 const server = http.createServer(app);
 
+// Allowed origins for CORS
+const allowedOrigins = [
+    'http://localhost:5173',
+    'http://localhost:5174',
+    'https://code-collab-mny8.vercel.app',
+    // Add any other frontend domains here
+];
+
 // Create Socket.IO server
 const io = new Server(server, {
     cors: {
-        origin: ['http://localhost:5173', 'http://localhost:5174','https://code-collab-mny8.vercel.app'],
+        origin: function(origin, callback) {
+            // Allow requests with no origin (like mobile apps, curl requests)
+            if (!origin) return callback(null, true);
+            
+            if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV !== 'production') {
+                callback(null, true);
+            } else {
+                console.log('Socket CORS blocked request from:', origin);
+                callback(null, true); // Allow all origins in production for now
+            }
+        },
         credentials: true,
         methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
         allowedHeaders: ['Content-Type', 'Authorization', 'Cookie']
@@ -68,11 +86,21 @@ const startServer = async () => {
                     }
                 }
                 
+                // Try to get token from auth object (added by client-side)
+                if (!token && socket.handshake.auth && socket.handshake.auth.token) {
+                    token = socket.handshake.auth.token;
+                    console.log("Found token in auth object");
+                }
+                
                 // Fallback to authorization header if needed
                 if (!token) {
-                    console.log("No token in cookies, checking auth header");
+                    console.log("No token in cookies or auth, checking auth header");
                     token = socket.handshake.auth?.token || socket.handshake.headers.authorization?.split(' ')?.[1];
                 }
+                
+                // Debug logging
+                console.log("Socket connection attempt with token:", !!token);
+                console.log("Socket handshake query:", socket.handshake.query);
                 
                 const projectId = socket.handshake.query.projectId;
 

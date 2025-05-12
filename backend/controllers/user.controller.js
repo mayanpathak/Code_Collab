@@ -18,7 +18,7 @@ export const createUserController = async (req, res) => {
 
         delete user._doc.password;
 
-        // Set cookie for added security
+        // Set cookie for added security with cross-domain support
         res.cookie('token', token, {
             httpOnly: true,
             maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
@@ -27,9 +27,20 @@ export const createUserController = async (req, res) => {
             path: '/'
         });
 
-        res.status(201).json({ user, token });
+        // Log registration success
+        console.log(`User registered successfully: ${user.email}`);
+
+        res.status(201).json({ 
+            user, 
+            token,
+            message: 'Registration successful' 
+        });
     } catch (error) {
-        res.status(400).send(error.message);
+        console.error('Registration error:', error);
+        res.status(400).json({ 
+            error: error.message,
+            message: 'Registration failed'
+        });
     }
 }
 
@@ -41,7 +52,6 @@ export const loginController = async (req, res) => {
     }
 
     try {
-
         const { email, password } = req.body;
 
         const user = await userModel.findOne({ email }).select('+password');
@@ -64,32 +74,37 @@ export const loginController = async (req, res) => {
 
         delete user._doc.password;
 
-        // Set cookie for added security
+        // Set cookie with consistent cross-domain settings
         res.cookie('token', token, {
             httpOnly: true,
             maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-            sameSite: 'lax',
-            path: '/',
-            secure: true
+            sameSite: 'none',
+            secure: true,
+            path: '/'
         });
 
-        res.status(200).json({ user, token });
+        // Log login success
+        console.log(`User logged in successfully: ${user.email}`);
 
+        res.status(200).json({ 
+            user, 
+            token,
+            message: 'Login successful'
+        });
 
     } catch (err) {
-
-        console.log(err);
-
-        res.status(400).send(err.message);
+        console.error('Login error:', err);
+        res.status(400).json({ 
+            error: err.message,
+            message: 'Login failed'
+        });
     }
 }
 
 export const profileController = async (req, res) => {
-
     res.status(200).json({
         user: req.user
     });
-
 }
 
 export const logoutController = async (req, res) => {
@@ -106,7 +121,8 @@ export const logoutController = async (req, res) => {
         // Always clear the cookie with matching options
         res.clearCookie('token', {
             httpOnly: true,
-            sameSite: 'lax',
+            sameSite: 'none',
+            secure: true,
             path: '/'
         });
         
@@ -118,7 +134,8 @@ export const logoutController = async (req, res) => {
         // Even if there's an error, try to clear the cookie
         res.clearCookie('token', {
             httpOnly: true,
-            sameSite: 'lax',
+            sameSite: 'none',
+            secure: true,
             path: '/'
         });
         res.status(200).json({
@@ -129,7 +146,6 @@ export const logoutController = async (req, res) => {
 
 export const getAllUsersController = async (req, res) => {
     try {
-
         const loggedInUser = await userModel.findOne({
             email: req.user.email
         })
@@ -141,10 +157,7 @@ export const getAllUsersController = async (req, res) => {
         })
 
     } catch (err) {
-
         console.log(err)
-
         res.status(400).json({ error: err.message })
-
     }
 }
