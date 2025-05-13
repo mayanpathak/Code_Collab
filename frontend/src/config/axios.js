@@ -5,7 +5,7 @@ import { API_URL } from "./config";
 const axiosInstance = axios.create({
   baseURL: API_URL,
   withCredentials: true, // Enable sending cookies with requests
-  timeout: 15000, // 15 seconds timeout
+  timeout: 30000, // 30 seconds timeout (increased from 15s)
   headers: {
     "Content-Type": "application/json",
     "Accept": "application/json",
@@ -27,9 +27,7 @@ axiosInstance.interceptors.request.use(
     }
 
     // Log outgoing request details for debugging (in development)
-    if (process.env.NODE_ENV !== 'production') {
-      console.log(`[API Request] ${config.method.toUpperCase()} ${config.url}`);
-    }
+    console.log(`[API Request] ${config.method.toUpperCase()} ${config.url}`);
     
     return config;
   },
@@ -58,7 +56,30 @@ axiosInstance.interceptors.response.use(
   },
   (error) => {
     // Enhanced error handling
-    if (error.code === "ERR_NETWORK") {
+    if (error.code === "ECONNABORTED") {
+      console.error("Request timeout error:", error);
+      
+      // Show timeout specific error
+      window.dispatchEvent(
+        new CustomEvent("api_error", {
+          detail: {
+            type: "TIMEOUT_ERROR",
+            message: "The server is taking too long to respond. Please try again later or check your connection.",
+          },
+        })
+      );
+      
+      // Handle login/register timeouts specially to avoid confusing the user
+      if (window.location.pathname === '/login' || window.location.pathname === '/register') {
+        window.dispatchEvent(
+          new CustomEvent("auth_form_error", {
+            detail: {
+              message: "Connection to server timed out. Please try again or check if the server is running.",
+            },
+          })
+        );
+      }
+    } else if (error.code === "ERR_NETWORK") {
       console.error("Network error - server may be down:", error);
       
       // You can dispatch a custom event to show a global error

@@ -3,7 +3,8 @@
  */
 
 // API URL from environment or fallback
-export const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+// Replace 'http://localhost:3000' with your actual deployed backend URL
+export const API_URL = import.meta.env.VITE_API_URL || 'https://soen-main-backend.vercel.app';
 
 // Log the API URL to help with debugging
 console.log('API URL:', API_URL);
