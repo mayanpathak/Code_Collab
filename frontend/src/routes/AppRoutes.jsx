@@ -250,21 +250,28 @@ const NotFound = () => (
 
 // Component to handle redirection for authenticated users
 const PublicRoute = ({ children }) => {
-  const { user } = useContext(UserContext)
+  const { user, loading } = useContext(UserContext)
   const navigate = useNavigate()
 
   useEffect(() => {
-    if (user) {
+    // Only redirect if we're not loading and user is authenticated
+    if (!loading && user) {
       console.log('Authenticated user accessing public page, redirecting to home')
       navigate('/home', { replace: true })
     }
-  }, [user, navigate])
+  }, [user, loading, navigate])
 
-  // If user is authenticated, don't render the children (will redirect)
+  // Show loading while checking authentication
+  if (loading) {
+    return <LoadingFallback />
+  }
+
+  // If user is authenticated, show loading while redirecting
   if (user) {
     return <LoadingFallback />
   }
 
+  // User is not authenticated, show public route
   return children
 }
 

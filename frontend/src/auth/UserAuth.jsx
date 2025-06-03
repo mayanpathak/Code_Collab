@@ -25,14 +25,25 @@ const UserAuth = ({ children }) => {
         fontSize: '18px',
         color: '#666'
       }}>
-        Loading...
+        Verifying authentication...
       </div>
     )
   }
 
-  // If user is not authenticated, don't render children (will redirect)
+  // If user is not authenticated, show loading while redirecting
   if (!user) {
-    return null
+    return (
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'center', 
+        alignItems: 'center', 
+        height: '100vh',
+        fontSize: '18px',
+        color: '#666'
+      }}>
+        Redirecting to login...
+      </div>
+    )
   }
 
   // User is authenticated, render the protected component
