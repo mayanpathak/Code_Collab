@@ -1,129 +1,167 @@
 import axios from "axios";
 import { API_URL } from "./config";
 
-// Create axios instance with improved configuration
+// Validate base URL at load time
+if (!API_URL || typeof API_URL !== "string") {
+  throw new Error("API_URL is not defined correctly in config.js");
+}
+
+// Create axios instance with enhanced configuration
 const axiosInstance = axios.create({
   baseURL: API_URL,
   withCredentials: true, // Enable sending cookies with requests
-  timeout: 30000, // 30 seconds timeout (increased from 15s)
+  timeout: 30000, // 30 seconds timeout
   headers: {
     "Content-Type": "application/json",
     "Accept": "application/json",
   },
 });
 
-// Log API URL for debugging
-console.log('API URL in axios config:', API_URL);
+// Debug log base URL (development only)
+if (process.env.NODE_ENV === "development") {
+  console.log("[Axios Config] API base URL:", API_URL);
+}
 
-// Add a request interceptor
+// Add request interceptor
 axiosInstance.interceptors.request.use(
   (config) => {
-    // Get token from localStorage as fallback
-    const token = localStorage.getItem("authToken");
+    try {
+      const token = localStorage.getItem("authToken");
+      if (token) {
+        config.headers["Authorization"] = `Bearer ${token}`;
+      }
 
-    // If token exists, add it to headers as fallback
-    if (token) {
-      config.headers["Authorization"] = `Bearer ${token}`;
+      // Dev logging
+      if (process.env.NODE_ENV === "development") {
+        console.log(`[API Request] ${config.method?.toUpperCase()} ${config.url}`);
+      }
+
+      return config;
+    } catch (err) {
+      console.error("Request interceptor error:", err);
+      return config;
     }
-
-    // Log outgoing request details for debugging (in development)
-    console.log(`[API Request] ${config.method.toUpperCase()} ${config.url}`);
-    
-    return config;
   },
   (error) => {
-    console.error("Request error:", error);
+    console.error("Request setup error:", error);
     return Promise.reject(error);
   }
 );
 
-// Add a response interceptor to handle common errors
+// Add response interceptor
 axiosInstance.interceptors.response.use(
   (response) => {
-    // If response includes a token, save it to localStorage
-    if (response.data?.token) {
-      localStorage.setItem('authToken', response.data.token);
+    try {
+      // Store new token if present in response body
+      if (response.data?.token) {
+        localStorage.setItem("authToken", response.data.token);
+      }
+
+      // Store refreshed token from headers
+      const refreshedToken = response.headers["x-refreshed-token"];
+      if (refreshedToken) {
+        localStorage.setItem("authToken", refreshedToken);
+        if (process.env.NODE_ENV === "development") {
+          console.log("[Auth] Token refreshed from header");
+        }
+      }
+
+      return response;
+    } catch (err) {
+      console.error("Response interceptor error:", err);
+      return response;
     }
-    
-    // Check for token refresh header
-    const refreshedToken = response.headers['x-refreshed-token'];
-    if (refreshedToken) {
-      localStorage.setItem('authToken', refreshedToken);
-      console.log('Token refreshed from header');
-    }
-    
-    return response;
   },
   (error) => {
-    // Enhanced error handling
-    if (error.code === "ECONNABORTED") {
-      console.error("Request timeout error:", error);
-      
-      // Show timeout specific error
+    const { response, code } = error;
+
+    if (code === "ECONNABORTED") {
+      console.error("Timeout error:", error);
+
       window.dispatchEvent(
         new CustomEvent("api_error", {
           detail: {
             type: "TIMEOUT_ERROR",
-            message: "The server is taking too long to respond. Please try again later or check your connection.",
+            message: "Server timeout. Please try again later or check your connection.",
           },
         })
       );
-      
-      // Handle login/register timeouts specially to avoid confusing the user
-      if (window.location.pathname === '/login' || window.location.pathname === '/register') {
+
+      if (["/login", "/register"].includes(window.location.pathname)) {
         window.dispatchEvent(
           new CustomEvent("auth_form_error", {
             detail: {
-              message: "Connection to server timed out. Please try again or check if the server is running.",
+              message: "Server timed out. Please retry or check server status.",
             },
           })
         );
       }
-    } else if (error.code === "ERR_NETWORK") {
-      console.error("Network error - server may be down:", error);
-      
-      // You can dispatch a custom event to show a global error
+
+    } else if (code === "ERR_NETWORK") {
+      console.error("Network error:", error);
+
       window.dispatchEvent(
         new CustomEvent("api_error", {
           detail: {
             type: "NETWORK_ERROR",
-            message:
-              "Unable to connect to the server. Please check your internet connection.",
+            message: "Network error. Please check your internet connection or try again.",
           },
         })
       );
-    } else if (error.response) {
-      // Log the detailed error for debugging
-      console.error(`API Error ${error.response.status}:`, error.response.data);
-      
-      // Handle status-specific errors
-      if (error.response.status === 401) {
-        // Handle unauthorized errors (expired token, etc.)
+
+    } else if (response) {
+      const status = response.status;
+      const data = response.data || {};
+
+      console.error(`API Error ${status}:`, data);
+
+      if (status === 401) {
         window.dispatchEvent(
           new CustomEvent("auth_error", {
             detail: {
               type: "AUTH_ERROR",
-              code: error.response.data?.code || "UNAUTHORIZED",
-              message: error.response.data?.message || 
-                "Your session has expired. Please log in again.",
+              code: data.code || "UNAUTHORIZED",
+              message: data.message || "Session expired. Please log in again.",
             },
           })
         );
-        
-        // Redirect to login page if not already there
-        if (window.location.pathname !== '/login' && window.location.pathname !== '/register') {
-          window.location.href = '/login';
+
+        if (!["/login", "/register"].includes(window.location.pathname)) {
+          window.location.href = "/login";
         }
-      } else if (error.response.status === 404) {
+
+      } else if (status === 404) {
         window.dispatchEvent(
           new CustomEvent("api_error", {
             detail: {
               type: "NOT_FOUND",
-              message: "The requested resource was not found.",
+              message: "Requested resource not found.",
+            },
+          })
+        );
+      } else {
+        // Generic fallback for unhandled status codes
+        window.dispatchEvent(
+          new CustomEvent("api_error", {
+            detail: {
+              type: "SERVER_ERROR",
+              message: data.message || "An error occurred. Please try again.",
             },
           })
         );
       }
+    } else {
+      // Unknown error fallback
+      console.error("Unknown error:", error);
+
+      window.dispatchEvent(
+        new CustomEvent("api_error", {
+          detail: {
+            type: "UNKNOWN_ERROR",
+            message: "An unexpected error occurred. Please try again.",
+          },
+        })
+      );
     }
 
     return Promise.reject(error);
