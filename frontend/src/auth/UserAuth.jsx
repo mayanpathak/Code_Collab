@@ -1,53 +1,32 @@
-import React, { useContext, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import React, { useContext, useEffect, useState } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { UserContext } from '../context/user.context'
 
 const UserAuth = ({ children }) => {
-  const { user, loading } = useContext(UserContext)
-  const navigate = useNavigate()
+    const { user } = useContext(UserContext)
+    const [loading, setLoading] = useState(true)
+    const navigate = useNavigate()
+    const location = useLocation()
 
-  useEffect(() => {
-    // Only redirect if we're not loading and there's no user
-    if (!loading && !user) {
-      console.log('User not authenticated, redirecting to login')
-      navigate('/login', { replace: true })
+    useEffect(() => {
+        if (user) {
+            setLoading(false)
+            // If user is on landing page or login/register pages, redirect to home
+            if (location.pathname === '/' || location.pathname === '/login' || location.pathname === '/register') {
+                navigate('/home')
+            }
+        } else {
+            // No authenticated user, redirect to landing page
+            navigate('/')
+            setLoading(false)
+        }
+    }, [user, location.pathname, navigate])
+
+    if (loading) {
+        return <div>Loading...</div>
     }
-  }, [user, loading, navigate])
 
-  // Show loading state while checking authentication
-  if (loading) {
-    return (
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'center', 
-        alignItems: 'center', 
-        height: '100vh',
-        fontSize: '18px',
-        color: '#666'
-      }}>
-        Verifying authentication...
-      </div>
-    )
-  }
-
-  // If user is not authenticated, show loading while redirecting
-  if (!user) {
-    return (
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'center', 
-        alignItems: 'center', 
-        height: '100vh',
-        fontSize: '18px',
-        color: '#666'
-      }}>
-        Redirecting to login...
-      </div>
-    )
-  }
-
-  // User is authenticated, render the protected component
-  return children
+    return <>{children}</>
 }
 
 export default UserAuth
