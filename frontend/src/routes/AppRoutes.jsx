@@ -143,45 +143,29 @@
 
 // export default AppRoutes
 import React from 'react';
-import { Route, BrowserRouter, Routes } from 'react-router-dom';
+import { Routes, Route } from 'react-router-dom';
 
-// Import screen components
-import Login from '../screens/Login'; // Assuming path is correct
-import Register from '../screens/Register'; // Assuming path is correct
-import Home from '../screens/Home'; // Assuming path is correct
-import Project from '../screens/Project'; // Assuming path is correct
-import LandingPage from '../screens/LandingPage'; // Assuming path is correct
+// Screens
+import Login from '../screens/Login';
+import Register from '../screens/Register';
+import Home from '../screens/Home';
+import Project from '../screens/Project';
+import LandingPage from '../screens/LandingPage';
 
-// Import auth wrapper
-import UserAuth from '../auth/UserAuth'; // Wrapper for protected routes
+// Auth wrapper for protected routes
+import UserAuth from '../auth/UserAuth';
 
-// Ensure UserProvider wraps this component tree at a higher level (e.g., in App.js or index.js)
-// Example in your main App.js or index.js:
-// import { UserProvider } from './context/user.context';
-// import { BrowserRouter } from 'react-router-dom'; // Import BrowserRouter
-// ReactDOM.render(
-//   <React.StrictMode>
-//     <UserProvider>
-//       <BrowserRouter> {/* BrowserRouter wraps AppRoutes */}
-//         <AppRoutes />
-//       </BrowserRouter>
-//     </UserProvider>
-//   </React.StrictMode>,
-//   document.getElementById('root')
-// );
+// NOTE: Ensure <BrowserRouter> and <UserProvider> are wrapping <AppRoutes /> in your main App.js or index.js
 
 const AppRoutes = () => {
     return (
-        // This component now assumes <BrowserRouter> is wrapping it in a higher-level component (e.g., App.js).
-        // If <BrowserRouter> is not outside, you would typically include it here,
-        // but ensure UserProvider still wraps BrowserRouter or its contents.
         <Routes>
-            {/* Public routes: LandingPage is always the entry point for "/" */}
+            {/* Public Routes */}
             <Route path="/" element={<LandingPage />} />
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
 
-            {/* Protected routes: require authentication for the current session */}
+            {/* Protected Routes */}
             <Route
                 path="/home"
                 element={
@@ -191,14 +175,15 @@ const AppRoutes = () => {
                 }
             />
             <Route
-                path="/project" // Assuming /project is also a protected route
+                path="/project"
                 element={
                     <UserAuth>
                         <Project />
                     </UserAuth>
                 }
             />
-            {/* Add other routes here. For example, a 404 page */}
+
+            {/* Optional: Catch-all for 404 Not Found */}
             {/* <Route path="*" element={<NotFoundPage />} /> */}
         </Routes>
     );
