@@ -359,8 +359,7 @@
 // };
 
 // export default Login;
-
-import React, { useState, useContext, useEffect } from 'react';
+import React, { useState, useContext } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { UserContext } from '../context/user.context';
 import axios from '../config/axios';
@@ -375,51 +374,40 @@ const Login = () => {
     const { setUser, clearUser } = useContext(UserContext);
     const navigate = useNavigate();
 
-    // Listen for API errors
-    useEffect(() => {
-        const handleApiError = (event) => {
-            setError(event.detail.message);
-            setIsLoading(false);
-        };
-
-        window.addEventListener('api_error', handleApiError);
-        
-        return () => {
-            window.removeEventListener('api_error', handleApiError);
-        };
-    }, []);
-
-    function submitHandler(e) {
+    async function submitHandler(e) {
         e.preventDefault();
-        setError(''); // Clear any previous errors
-        clearUser(); // Clear any existing user data
+        setError('');
+        clearUser();
         setIsLoading(true);
 
-        axios.post('/users/login', {
-            email,
-            password
-        },{
-            withCredentials: true
-        }).then((res) => {
-            setIsLoading(false);
-            if (res.data.user) {
-                // No need to manually save token - server sets it as an HTTP-only cookie
-                setUser(res.data.user);
-                navigate('/home');
+        try {
+            const response = await axios.post('/users/login', {
+                email,
+                password
+            }, {
+                withCredentials: true
+            });
+
+            if (response.data?.user) {
+                setUser(response.data.user);
+                navigate('/home', { replace: true });
             } else {
                 throw new Error('Invalid response from server');
             }
-        }).catch((err) => {
-            setIsLoading(false);
+        } catch (err) {
             if (err.code === 'ERR_NETWORK') {
-                setError('Unable to connect to the server. Please check if the server is running.');
+                setError('Unable to connect to the server. Please check your connection.');
+            } else if (err.response) {
+                setError(err.response.data?.error || 'Login failed. Please check your credentials.');
             } else {
-                setError(err.response?.data?.error || 'Login failed. Please check your credentials and try again.');
+                setError('An unexpected error occurred. Please try again.');
             }
-            clearUser(); // Clear user data on error
-        });
+        } finally {
+            setIsLoading(false);
+        }
     }
 
+    // Animation variants
     const containerVariants = {
         hidden: { opacity: 0 },
         visible: {
@@ -495,15 +483,17 @@ const Login = () => {
                             <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
                                 <Mail size={18} />
                             </span>
-                        <input
-                            onChange={(e) => setEmail(e.target.value)}
-                            type="email"
-                            id="email"
+                            <input
+                                onChange={(e) => setEmail(e.target.value)}
+                                value={email}
+                                type="email"
+                                id="email"
                                 className="w-full p-3 pl-10 rounded-lg bg-gray-800/80 text-white border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-colors"
                                 placeholder="your.email@example.com"
                                 required
-                        />
-                    </div>
+                                disabled={isLoading}
+                            />
+                        </div>
                     </motion.div>
 
                     <motion.div className="mb-6" variants={itemVariants}>
@@ -512,15 +502,17 @@ const Login = () => {
                             <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
                                 <Lock size={18} />
                             </span>
-                        <input
-                            onChange={(e) => setPassword(e.target.value)}
-                            type="password"
-                            id="password"
+                            <input
+                                onChange={(e) => setPassword(e.target.value)}
+                                value={password}
+                                type="password"
+                                id="password"
                                 className="w-full p-3 pl-10 rounded-lg bg-gray-800/80 text-white border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-colors"
                                 placeholder="••••••••••••"
                                 required
-                        />
-                    </div>
+                                disabled={isLoading}
+                            />
+                        </div>
                         <div className="flex justify-end mt-2">
                             <motion.button
                                 type="button"
@@ -534,10 +526,10 @@ const Login = () => {
 
                     <motion.button
                         type="submit"
-                        className="w-full p-3 rounded-lg bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-medium shadow-lg shadow-indigo-500/30 flex items-center justify-center"
+                        className="w-full p-3 rounded-lg bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-medium shadow-lg shadow-indigo-500/30 flex items-center justify-center disabled:opacity-70"
                         variants={buttonVariants}
-                        whileHover="hover"
-                        whileTap="tap"
+                        whileHover={!isLoading ? "hover" : ""}
+                        whileTap={!isLoading ? "tap" : ""}
                         disabled={isLoading}
                     >
                         {isLoading ? (
