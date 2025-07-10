@@ -12,7 +12,7 @@
  * Falls back to a production-ready default if not provided via Vite environment variables.
  * Ensure `VITE_API_URL` is defined in `.env` for your environment-specific settings.
  */
-export const API_URL = import.meta.env?.VITE_API_URL || 'https://soen-main-backend.vercel.app';
+export const API_URL = import.meta.env?.VITE_API_URL || 'https://backup-7y2u.onrender.com';
 
 // Log the API URL (only in development for debugging)
 if (import.meta.env?.MODE === 'development') {
